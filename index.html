@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScreenCast · Grabadora de pantalla</title>
+
+  <script src="https://milericons.github.io/outline.github.io/public/miller-icons.js" defer></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="_libs/css/styles.css" />
+</head>
+<body>
+
+  <main class="hero">
+    <section class="panel">
+    <span class="panel__logo"><i class="miller-icon" data-icon="computer"></i></span>
+    <div class="panel__text">
+      <h1 class="panel__title">ScreenCast</h1>
+      <p class="panel__status"><span id="status">Presiona para grabar</span><span class="sep" id="sep" hidden> · </span><time id="timer" hidden>00:00</time></p>
+    </div>
+
+    <div class="controls">
+      <button class="ctrl ctrl--rec" id="startBtn" title="Grabar / Detener">
+        <span class="rec-dot"></span>
+        <span class="stop-ico"></span>
+      </button>
+      <div class="dd">
+        <button class="ctrl ctrl--color" id="downloadBtn" title="Descargar" hidden>
+          <i class="miller-icon" data-icon="download"></i>
+        </button>
+        <div class="fmt-popup" id="fmtPopup" hidden>
+          <button class="fmt" data-fmt="webm">
+            <span>
+              <span class="fmt__name">Video WebM</span>
+              <span class="fmt__hint">Ligero, ideal para web</span>
+            </span>
+          </button>
+          <button class="fmt" data-fmt="mp4" id="mp4Option">
+            <span>
+              <span class="fmt__name">Video MP4</span>
+              <span class="fmt__hint">Compatible con todo</span>
+            </span>
+          </button>
+          <button class="fmt" data-fmt="audio" id="audioOption" style="display: none;">
+            <span>
+              <span class="fmt__name"> Sólo audio</span>
+              <span class="fmt__hint">Solo el sonido, sin video</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+    </section>
+
+    <p class="legenda">Uso gratuito — no requiere registro ni instalación. Todo se procesa en tu navegador.</p>
+  </main>
+
+  <script src="_libs/js/app.js" defer></script>
+</body>
+</html>
