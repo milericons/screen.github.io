@@ -236,3 +236,5 @@ body.is-recording #startBtn .stop-ico {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important }
 }
+
+/* Miller */
