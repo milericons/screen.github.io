@@ -234,5 +234,5 @@ body.is-recording #startBtn .stop-ico {
 .ctrl--rec:hover:not(:disabled) { background: #f06063; }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  * { animation: none !important; transition: none !important }
 }
