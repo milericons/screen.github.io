@@ -8,9 +8,17 @@
     startBtn: document.getElementById("startBtn"),
     downloadBtn: document.getElementById("downloadBtn"),
     fmtPopup: document.getElementById("fmtPopup"),
+    webmOption: document.getElementById("webmOption"),
     mp4Option: document.getElementById("mp4Option"),
     audioOption: document.getElementById("audioOption"),
+    gifOption: document.getElementById("gifOption"),
   };
+
+  const GIF_ENCODER_URL = "https://cdn.jsdelivr.net/npm/gifenc@1.0.3/dist/gifenc.esm.js";
+  const LAME_URL = "https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js";
+  let gifBusy = false;
+  let audioBusy = false;
+  let lamePromise = null;
 
   const state = {
     recorders: [],
@@ -69,9 +77,11 @@
       }
       el.downloadBtn.hidden = true;
       el.fmtPopup.hidden = true;
+      el.webmOption.disabled = true;
       el.mp4Option.disabled = true;
       el.audioOption.disabled = true;
       el.audioOption.hidden = true;
+      el.gifOption.disabled = true;
       state.pending = 0;
       state.recording = true;
       state.displayTracks = display.getTracks();
@@ -96,7 +106,6 @@
         videoBitsPerSecond: 5_000_000,
         audioBitsPerSecond: 128_000,
       });
-      if (!mrWebm) throw new Error("webm-unsupported");
 
       // Grabador MP4 de video (sólo si el navegador soporta H.264 + AAC reales)
       const mp4Mime = pickMime(
@@ -104,6 +113,7 @@
         null
       );
       const mrMp4 = mp4Mime ? safeRecorder(display, { mimeType: mp4Mime }) : null;
+      if (!mrWebm && !mrMp4) throw new Error("no-recorder-supported");
 
       // Grabador sólo audio (si hay pista de audio)
       const audioMime = pickMime(
@@ -128,8 +138,10 @@
         checkDone();
       };
 
-      mrWebm.ondataavailable = onChunk("webm");
-      mrWebm.onstop = onStop("webm", mrWebm);
+      if (mrWebm) {
+        mrWebm.ondataavailable = onChunk("webm");
+        mrWebm.onstop = onStop("webm", mrWebm);
+      }
       if (mrMp4) {
         mrMp4.ondataavailable = onChunk("mp4");
         mrMp4.onstop = onStop("mp4", mrMp4);
@@ -195,6 +207,7 @@
     el.timer.hidden = true;
     el.sep.hidden = true;
     state.chunksOf = null;
+    state.lastDuration = state.seconds;
 
     for (const key of ["webm", "mp4", "audio"]) {
       if (state.urls[key]) {
@@ -204,26 +217,27 @@
     }
 
     // Muestra el botón de descarga sólo si hay contenido
-    const hasData = state.blobs.webm && state.blobs.webm.size > 0;
+    state.hasWebm = Boolean(state.blobs.webm && state.blobs.webm.size > 0);
+    state.hasMp4 = Boolean(state.blobs.mp4 && state.blobs.mp4.size > 0);
+    state.hasAudioRec = Boolean(state.blobs.audio && state.blobs.audio.size > 0);
+    const hasData = state.hasWebm || state.hasMp4;
+
+    el.webmOption.disabled = !state.hasWebm;
+    el.mp4Option.disabled = !state.hasMp4;
+    el.audioOption.disabled = !state.hasAudioRec;
+    el.audioOption.hidden = !state.hasAudioRec;
+
     if (!hasData) {
-      state.hasMp4 = state.hasAudioRec = false;
-      el.mp4Option.disabled = true;
-      el.audioOption.disabled = true;
-      el.audioOption.hidden = true;
+      el.gifOption.disabled = true;
       setStatus("No se capturó nada. Presiona para grabar.");
       return;
     }
 
-    if (state.blobs.webm) state.urls.webm = URL.createObjectURL(state.blobs.webm);
-    state.hasMp4 = Boolean(state.blobs.mp4 && state.blobs.mp4.size > 0);
-    el.mp4Option.disabled = !state.hasMp4;
+    if (state.hasWebm) state.urls.webm = URL.createObjectURL(state.blobs.webm);
     if (state.hasMp4) state.urls.mp4 = URL.createObjectURL(state.blobs.mp4);
-
-    state.hasAudioRec = Boolean(state.blobs.audio && state.blobs.audio.size > 0);
-    el.audioOption.disabled = !state.hasAudioRec;
-    el.audioOption.hidden = !state.hasAudioRec;
     if (state.hasAudioRec) state.urls.audio = URL.createObjectURL(state.blobs.audio);
 
+    el.gifOption.disabled = false;
     el.downloadBtn.hidden = false;
     el.downloadBtn.disabled = false;
     setStatus("Grabación lista");
@@ -240,6 +254,228 @@
     el.fmtPopup.hidden = true;
   }
 
+  function seekTo(video, t) {
+    if (Math.abs(video.currentTime - t) < 1e-3) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const done = (fn, arg) => {
+        clearTimeout(timer);
+        video.removeEventListener("seeked", onSeek);
+        video.onerror = null;
+        fn(arg);
+      };
+      const timer = setTimeout(() => done(reject, new Error("seek-timeout")), 10000);
+      const onSeek = () => done(resolve);
+      video.addEventListener("seeked", onSeek);
+      video.onerror = () => done(reject, new Error("seek-failed"));
+      video.currentTime = t;
+    });
+  }
+
+  async function sourceToGif(blob, gen, onProgress) {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = url;
+
+    try {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("video-timeout")), 15000);
+        video.onloadedmetadata = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        video.onerror = () => {
+          clearTimeout(timer);
+          reject(new Error("video-load"));
+        };
+      });
+
+      // Chrome reporta duration = Infinity en blobs grabados: forzar fin del stream
+      if (!isFinite(video.duration)) {
+        video.currentTime = 1e101;
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 3000);
+          video.addEventListener("seeked", () => {
+            clearTimeout(timer);
+            resolve();
+          }, { once: true });
+        });
+      }
+
+      let duration = video.duration;
+      if (!isFinite(duration) || duration <= 0) duration = state.lastDuration || 0;
+      if (!duration || !video.videoWidth) throw new Error("bad-video");
+
+      const FPS = 10;
+      const MAX_W = 640;
+      const scale = Math.min(1, MAX_W / video.videoWidth);
+      const w = Math.max(2, Math.round((video.videoWidth * scale) / 2) * 2);
+      const h = Math.max(2, Math.round((video.videoHeight * scale) / 2) * 2);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+
+      const { GIFEncoder, quantize, applyPalette } = await import(GIF_ENCODER_URL);
+      const gif = GIFEncoder();
+      const total = Math.max(1, Math.ceil(duration * FPS));
+
+      for (let i = 0; i < total; i++) {
+        if (state.gen !== gen) throw new Error("cancelled");
+        await seekTo(video, Math.min(duration - 0.001, i / FPS));
+        ctx.drawImage(video, 0, 0, w, h);
+        const { data } = ctx.getImageData(0, 0, w, h);
+        const palette = quantize(data, 256);
+        gif.writeFrame(applyPalette(data, palette, "rgb565"), w, h, {
+          palette,
+          delay: 1000 / FPS,
+        });
+        onProgress(Math.round(((i + 1) / total) * 100));
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      gif.finish();
+      return new Blob([gif.bytes()], { type: "image/gif" });
+    } finally {
+      video.onerror = null;
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function makeGif() {
+    if (gifBusy) return;
+    const gen = state.gen;
+    const source = state.hasWebm ? state.blobs.webm : state.blobs.mp4;
+    if (!source || source.size === 0) return;
+
+    gifBusy = true;
+    el.gifOption.disabled = true;
+    el.fmtPopup.hidden = true;
+
+    try {
+      setStatus("Preparando GIF…");
+      const gif = await sourceToGif(source, gen, (pct) => {
+        if (state.gen === gen) setStatus(`Convirtiendo a GIF… ${pct}%`);
+      });
+      if (state.gen !== gen) return;
+
+      const url = URL.createObjectURL(gif);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `screencast-${stamp()}.gif`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setStatus("GIF descargado");
+    } catch {
+      if (state.gen === gen) setStatus("No se pudo generar el GIF.");
+    } finally {
+      gifBusy = false;
+      if (state.gen === gen) el.gifOption.disabled = false;
+    }
+  }
+
+  function loadLame() {
+    if (window.lamejs) return Promise.resolve(window.lamejs);
+    if (!lamePromise) {
+      lamePromise = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = LAME_URL;
+        s.onload = () => {
+          if (window.lamejs) resolve(window.lamejs);
+          else {
+            lamePromise = null;
+            reject(new Error("lame-load"));
+          }
+        };
+        s.onerror = () => {
+          lamePromise = null;
+          reject(new Error("lame-load"));
+        };
+        document.head.appendChild(s);
+      });
+    }
+    return lamePromise;
+  }
+
+  function toInt16(float32) {
+    const out = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return out;
+  }
+
+  async function toMp3(blob, gen, onProgress) {
+    const lamejs = await loadLame();
+
+    const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OfflineCtx) throw new Error("no-audio-api");
+    const audioBuffer = await new OfflineCtx(1, 1, 44100).decodeAudioData(await blob.arrayBuffer());
+
+    if (state.gen !== gen) throw new Error("cancelled");
+
+    const channels = Math.min(2, audioBuffer.numberOfChannels);
+    const encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, 128);
+    const left = toInt16(audioBuffer.getChannelData(0));
+    const right = channels > 1 ? toInt16(audioBuffer.getChannelData(1)) : null;
+
+    const BLOCK = 1152 * 50;
+    const parts = [];
+    for (let i = 0; i < left.length; i += BLOCK) {
+      if (state.gen !== gen) throw new Error("cancelled");
+      const l = left.subarray(i, i + BLOCK);
+      const chunk = right
+        ? encoder.encodeBuffer(l, right.subarray(i, i + BLOCK))
+        : encoder.encodeBuffer(l);
+      if (chunk.length > 0) parts.push(chunk);
+      onProgress(Math.min(99, Math.round(((i + BLOCK) / left.length) * 100)));
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    const end = encoder.flush();
+    if (end.length > 0) parts.push(end);
+    onProgress(100);
+    return new Blob(parts, { type: "audio/mpeg" });
+  }
+
+  async function downloadAudio() {
+    if (audioBusy) return;
+    const gen = state.gen;
+    const source = state.blobs.audio;
+    if (!source || source.size === 0) return;
+
+    audioBusy = true;
+    el.audioOption.disabled = true;
+    el.fmtPopup.hidden = true;
+
+    try {
+      setStatus("Preparando MP3…");
+      const mp3 = await toMp3(source, gen, (pct) => {
+        if (state.gen === gen) setStatus(`Convirtiendo a MP3… ${pct}%`);
+      });
+      if (state.gen !== gen) return;
+
+      const url = URL.createObjectURL(mp3);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `screencast-${stamp()}.mp3`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setStatus("MP3 descargado");
+    } catch {
+      if (state.gen === gen) setStatus("No se pudo generar el MP3.");
+    } finally {
+      audioBusy = false;
+      if (state.gen === gen) el.audioOption.disabled = false;
+    }
+  }
+
   function closePopup(e) {
     if (!el.fmtPopup.hidden && !el.fmtPopup.contains(e.target) && !el.downloadBtn.contains(e.target)) {
       el.fmtPopup.hidden = true;
@@ -254,7 +490,12 @@
   });
 
   document.querySelectorAll(".fmt").forEach((btn) => {
-    btn.addEventListener("click", () => download(btn.dataset.fmt));
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.fmt;
+      if (key === "gif") makeGif();
+      else if (key === "audio") downloadAudio();
+      else download(key);
+    });
   });
 
   document.addEventListener("click", closePopup);

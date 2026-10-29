@@ -32,7 +32,7 @@
           <i class="miller-icon" data-icon="download"></i>
         </button>
         <div class="fmt-popup" id="fmtPopup" hidden>
-          <button class="fmt" data-fmt="webm">
+          <button class="fmt" data-fmt="webm" id="webmOption">
             <span>
               <span class="fmt__name">Video WebM</span>
               <span class="fmt__hint">Ligero, ideal para web</span>
@@ -44,10 +44,16 @@
               <span class="fmt__hint">Compatible con todo</span>
             </span>
           </button>
+          <button class="fmt" data-fmt="gif" id="gifOption">
+            <span>
+              <span class="fmt__name">Animación GIF</span>
+              <span class="fmt__hint">Sin audio · ideal para clips cortos</span>
+            </span>
+          </button>
           <button class="fmt" data-fmt="audio" id="audioOption" hidden>
             <span>
-              <span class="fmt__name"> Sólo audio</span>
-              <span class="fmt__hint">Solo el sonido, sin video</span>
+              <span class="fmt__name">Sólo audio</span>
+              <span class="fmt__hint">MP3 · el sonido sin video</span>
             </span>
           </button>
         </div>
