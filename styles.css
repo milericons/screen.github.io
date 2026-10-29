@@ -2,6 +2,12 @@
 
 [hidden] { display: none !important; }
 
+@property --border-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
 body {
   font-family: "Outfit", system-ui, sans-serif;
   min-height: 100vh;
@@ -31,6 +37,40 @@ body {
   animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) backwards;
   max-width: 100%;
   flex-wrap: wrap;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 25px;
+  padding: 3px;
+  background: conic-gradient(
+    from var(--border-angle),
+    transparent 0deg,
+    transparent 250deg,
+    rgba(199, 210, 254, 0) 250deg,
+    #c7d2fe 310deg,
+    #fbcfe8 345deg,
+    rgba(251, 207, 232, 0) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+  z-index: 1;
+}
+
+body.is-recording .panel::before {
+  opacity: 1;
+  animation: border-spin 2.5s linear infinite;
+}
+
+@keyframes border-spin {
+  to { --border-angle: 360deg; }
 }
 
 .hero {
@@ -87,6 +127,7 @@ body {
 .fmt:disabled { opacity: 0.35; cursor: default; }
 
 .panel__logo {
+  position: relative;
   display: grid;
   place-items: center;
   width: 48px;
@@ -99,6 +140,40 @@ body {
 }
 
 .panel__logo .miller-icon { width: 24px; height: 24px; }
+
+.panel__logo::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--border-angle),
+    transparent 0deg,
+    transparent 250deg,
+    rgba(199, 210, 254, 0) 250deg,
+    #c7d2fe 310deg,
+    #fbcfe8 345deg,
+    rgba(251, 207, 232, 0) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+  z-index: 1;
+}
+
+body.is-recording .panel__logo::before {
+  opacity: 1;
+  animation: border-spin-reverse 2.5s linear infinite;
+}
+
+@keyframes border-spin-reverse {
+  to { --border-angle: -360deg; }
+}
 
 .panel__text {
   display: flex;
@@ -122,7 +197,7 @@ body {
 .panel__status time {
   font-family: "JetBrains Mono", monospace;
   font-weight: 500;
-  color: #cf3f3a;
+  color: rgba(29, 35, 51, 0.7);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
 }

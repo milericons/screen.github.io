@@ -204,10 +204,12 @@
 
     clearInterval(state.timerId);
     document.body.classList.remove("is-recording");
-    el.timer.hidden = true;
-    el.sep.hidden = true;
     state.chunksOf = null;
     state.lastDuration = state.seconds;
+
+    el.timer.textContent = fmt(state.lastDuration);
+    el.timer.hidden = false;
+    el.sep.hidden = false;
 
     for (const key of ["webm", "mp4", "audio"]) {
       if (state.urls[key]) {
@@ -229,6 +231,8 @@
 
     if (!hasData) {
       el.gifOption.disabled = true;
+      el.timer.hidden = true;
+      el.sep.hidden = true;
       setStatus("No se capturó nada. Presiona para grabar.");
       return;
     }
