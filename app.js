@@ -12,6 +12,7 @@
     mp4Option: document.getElementById("mp4Option"),
     audioOption: document.getElementById("audioOption"),
     gifOption: document.getElementById("gifOption"),
+    imagesOption: document.getElementById("imagesOption"),
     gifOptions: document.getElementById("gifOptions"),
     gifFps: document.getElementById("gifFps"),
     gifWidth: document.getElementById("gifWidth"),
@@ -477,6 +478,7 @@
 
     if (!hasData) {
       el.gifOption.disabled = true;
+      if (el.imagesOption) el.imagesOption.disabled = true;
       el.timer.hidden = true;
       el.sep.hidden = true;
       setStatus("No se capturó nada. Presiona para grabar.");
@@ -488,9 +490,19 @@
     if (state.hasAudioRec) state.urls.audio = URL.createObjectURL(state.blobs.audio);
 
     el.gifOption.disabled = false;
+    if (el.imagesOption) el.imagesOption.disabled = false;
     el.downloadBtn.hidden = false;
     el.downloadBtn.disabled = false;
     setStatus("Grabación lista");
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function download(key) {
@@ -502,6 +514,80 @@
     a.download = `screencast-${stamp()}.${ext}`;
     a.click();
     el.fmtPopup.hidden = true;
+  }
+
+  async function loadJsZip() {
+    if (window.JSZip) return;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  async function downloadImages() {
+    const source = state.hasWebm ? state.blobs.webm : state.blobs.mp4;
+    if (!source || source.size === 0) return;
+    el.fmtPopup.hidden = true;
+    try {
+      await loadJsZip();
+      setStatus("Preparando imágenes…");
+      const url = URL.createObjectURL(source);
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.src = url;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("video-timeout")), 15000);
+        video.onloadedmetadata = () => { clearTimeout(timer); resolve(); };
+        video.onerror = () => { clearTimeout(timer); reject(new Error("video-load")); };
+      });
+
+      if (!isFinite(video.duration)) {
+        video.currentTime = 1e101;
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 3000);
+          video.addEventListener("seeked", () => { clearTimeout(timer); resolve(); }, { once: true });
+        });
+      }
+
+      let duration = video.duration;
+      if (!isFinite(duration) || duration <= 0) duration = state.lastDuration || 0;
+      if (!duration || !video.videoWidth) throw new Error("bad-video");
+
+      const maxFrames = 30;
+      const interval = Math.max(duration / maxFrames, 0.5);
+      const times = [];
+      for (let t = 0; t < duration; t += interval) times.push(t);
+      if (times.length === 0) times.push(0);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+
+      const zip = new window.JSZip();
+      for (let i = 0; i < times.length; i++) {
+        await seekTo(video, Math.min(duration - 0.001, times[i]));
+        ctx.drawImage(video, 0, 0);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        if (blob) zip.file(`frame-${String(i + 1).padStart(4, "0")}.png`, blob);
+        setStatus(`Extrayendo imágenes… ${Math.round(((i + 1) / times.length) * 100)}%`);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      URL.revokeObjectURL(url);
+      setStatus("Generando ZIP…");
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(zipBlob, `screencast-frames-${stamp()}.zip`);
+      setStatus("Imágenes listas");
+    } catch (err) {
+      console.warn(err);
+      setStatus(`No se pudieron generar las imágenes: ${err && err.message ? err.message : err}`);
+    }
   }
 
   function seekTo(video, t) {
@@ -752,6 +838,7 @@
       const key = btn.dataset.fmt;
       if (key === "gif") openGifOptions();
       else if (key === "audio") downloadAudio();
+      else if (key === "images") downloadImages();
       else download(key);
     });
   });
