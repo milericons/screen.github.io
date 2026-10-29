@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   "use strict";
 
   const el = {
@@ -27,12 +27,6 @@
     gifClose: document.getElementById("gifClose"),
     gifCancel: document.getElementById("gifCancel"),
     gifGenerate: document.getElementById("gifGenerate"),
-    historyList: document.getElementById("historyList"),
-    historyEmpty: document.getElementById("historyEmpty"),
-    historyClear: document.getElementById("historyClear"),
-    history: document.getElementById("history"),
-    historyToggle: document.getElementById("historyToggle"),
-    historyClose: document.getElementById("historyClose"),
   };
 
   const GIF_ENCODER_URL = "https://cdn.jsdelivr.net/npm/gifenc@1.0.3/dist/gifenc.esm.js";
@@ -496,8 +490,7 @@
     el.gifOption.disabled = false;
     el.downloadBtn.hidden = false;
     el.downloadBtn.disabled = false;
-    setStatus("Grabaci��n lista");
-    saveRecording();
+    setStatus("Grabación lista");
   }
 
   function download(key) {
@@ -747,183 +740,6 @@
       el.fmtPopup.hidden = true;
     }
   }
-
-  const DB_NAME = "screencast-history";
-  const DB_VERSION = 1;
-  const STORE_NAME = "recordings";
-
-  function openHistoryDb() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: "id" });
-        }
-      };
-      req.onsuccess = (e) => resolve(e.target.result);
-      req.onerror = (e) => reject(e.target.error);
-    });
-  }
-
-  function dbRequest(db, mode, fn) {
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, mode);
-      const store = tx.objectStore(STORE_NAME);
-      const req = fn(store);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async function getAllRecordings() {
-    const db = await openHistoryDb();
-    return dbRequest(db, "readonly", (store) => store.getAll());
-  }
-
-  async function putRecording(record) {
-    const db = await openHistoryDb();
-    return dbRequest(db, "readwrite", (store) => store.put(record));
-  }
-
-  async function deleteRecording(id) {
-    const db = await openHistoryDb();
-    return dbRequest(db, "readwrite", (store) => store.delete(id));
-  }
-
-  async function clearRecordings() {
-    const db = await openHistoryDb();
-    return dbRequest(db, "readwrite", (store) => store.clear());
-  }
-
-  function formatBytes(bytes) {
-    if (!bytes) return "0 B";
-    const units = ["B", "KB", "MB", "GB"];
-    let i = 0;
-    let value = bytes;
-    while (value >= 1024 && i < units.length - 1) {
-      value /= 1024;
-      i += 1;
-    }
-    return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-  }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  async function saveRecording() {
-    if (!state.hasWebm && !state.hasMp4) return;
-    try {
-      const record = {
-        id: `${stamp()}-${Math.random().toString(36).slice(2)}`,
-        date: Date.now(),
-        duration: state.lastDuration || state.seconds || 0,
-        webm: state.blobs.webm || null,
-        audio: state.blobs.audio || null,
-        size: (state.blobs.webm?.size || 0) + (state.blobs.audio?.size || 0),
-      };
-      await putRecording(record);
-      const all = await getAllRecordings();
-      all.sort((a, b) => b.date - a.date);
-      if (all.length > 20) {
-        for (const item of all.slice(20)) await deleteRecording(item.id);
-      }
-      await loadHistory();
-    } catch (err) {
-      console.warn("No se pudo guardar el historial", err);
-    }
-  }
-
-  async function loadHistory() {
-    if (!el.historyList) return;
-    el.historyList.innerHTML = "";
-    let items = [];
-    try {
-      items = await getAllRecordings();
-    } catch {
-      items = [];
-    }
-    items.sort((a, b) => b.date - a.date);
-    if (el.historyToggle) el.historyToggle.hidden = items.length === 0;
-    if (!items.length) {
-      if (el.historyEmpty) el.historyEmpty.hidden = false;
-      return;
-    }
-    if (el.historyEmpty) el.historyEmpty.hidden = true;
-    for (const record of items) {
-      const li = document.createElement("li");
-      li.className = "history__item";
-      const meta = document.createElement("div");
-      meta.className = "history__meta";
-      const title = document.createElement("strong");
-      title.textContent = new Date(record.date).toLocaleString();
-      const sub = document.createElement("span");
-      sub.textContent = `${fmt(record.duration || 0)} · ${formatBytes(record.size || 0)}`;
-      meta.append(title, sub);
-
-      const actions = document.createElement("div");
-      actions.className = "history__actions";
-      if (record.webm) {
-        const btn = document.createElement("button");
-        btn.className = "history__btn";
-        btn.type = "button";
-        btn.textContent = "WebM";
-        btn.addEventListener("click", () => downloadBlob(record.webm, `screencast-${record.id}.webm`));
-        actions.appendChild(btn);
-      }
-      if (record.audio) {
-        const btn = document.createElement("button");
-        btn.className = "history__btn";
-        btn.type = "button";
-        btn.textContent = "Audio";
-        btn.addEventListener("click", () => downloadBlob(record.audio, `screencast-${record.id}.weba`));
-        actions.appendChild(btn);
-      }
-      const del = document.createElement("button");
-      del.className = "history__btn history__btn--danger";
-      del.type = "button";
-      del.setAttribute("aria-label", "Eliminar grabación");
-      del.innerHTML = '<i class="miller-icon" data-icon="delete"></i>';
-      del.addEventListener("click", async () => {
-        await deleteRecording(record.id);
-        await loadHistory();
-      });
-      actions.appendChild(del);
-
-      li.append(meta, actions);
-      el.historyList.appendChild(li);
-    }
-  }
-
-  if (el.historyClear) {
-    el.historyClear.addEventListener("click", async () => {
-      await clearRecordings();
-      await loadHistory();
-    });
-  }
-
-  if (el.historyToggle && el.history) {
-    el.historyToggle.addEventListener("click", () => {
-      el.history.hidden = false;
-      loadHistory();
-    });
-  }
-
-  if (el.historyClose && el.history) {
-    el.historyClose.addEventListener("click", () => {
-      el.history.hidden = true;
-      loadHistory();
-    });
-  }
-
-  loadHistory();
-
   el.startBtn.addEventListener("click", () => (state.recording ? stop() : start()));
 
   el.downloadBtn.addEventListener("click", () => {
