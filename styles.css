@@ -135,7 +135,7 @@ body.is-recording .panel::before {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.9);
-  color: #6366f1;
+  color: #4f4f4f;
   flex-shrink: 0;
 }
 
@@ -235,7 +235,7 @@ body.is-recording .panel__logo::before {
 
 .ctrl:disabled { opacity: 0.3; cursor: default; }
 
-.ctrl--color { color: #6366f1; }
+.ctrl--color { color: #4f4f4f; }
 
 #downloadBtn:not([hidden]) { animation: pop 0.35s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 
